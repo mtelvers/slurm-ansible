@@ -1,0 +1,224 @@
+---
+- name: Install base packages on all nodes
+  hosts: all
+  become: yes
+  tasks:
+    - name: Set hostname using hostnamectl
+      command: hostnamectl set-hostname {{ inventory_hostname }}
+      changed_when: true
+
+    - name: Install munge
+      apt:
+        name:
+          - munge
+        state: present
+        update_cache: yes
+
+- name: Configure Slurm Head Node
+  hosts: head
+  become: yes
+  tasks:
+    - name: Install slurmctld, slurmdbd, NFS server, and database
+      apt:
+        name:
+          - slurmctld
+          - slurmdbd
+          - nfs-kernel-server
+          - mariadb-server
+          - python3-pymysql
+        state: present
+
+    - name: Create /var/spool/slurmctld directory
+      file:
+        path: /var/spool/slurmctld
+        state: directory
+        owner: slurm
+        group: slurm
+        mode: '0775'
+
+    - name: Configure NFS exports for /home
+      lineinfile:
+        path: /etc/exports
+        regexp: '^/home\s+'
+        line: "/home {{ groups['workers'] | join('(rw,async,no_subtree_check,no_root_squash) ') }}(rw,async,no_subtree_check,no_root_squash)"
+        create: yes
+
+    - name: Export NFS shares
+      command: exportfs -ra
+      changed_when: true
+
+    - name: Start and enable NFS server
+      systemd:
+        name: nfs-kernel-server
+        state: started
+        enabled: yes
+
+    - name: Start and enable MariaDB
+      systemd:
+        name: mariadb
+        state: started
+        enabled: yes
+
+    - name: Create Slurm accounting database and user
+      shell: |
+        mysql -e "CREATE DATABASE IF NOT EXISTS slurm_acct_db;"
+        mysql -e "CREATE USER IF NOT EXISTS 'slurm'@'localhost' IDENTIFIED BY 'slurmdbpass';"
+        mysql -e "GRANT ALL ON slurm_acct_db.* TO 'slurm'@'localhost';"
+        mysql -e "FLUSH PRIVILEGES;"
+      changed_when: false
+
+    - name: Create slurmdbd configuration file
+      template:
+        src: slurmdbd.conf.j2
+        dest: /etc/slurm/slurmdbd.conf
+        owner: slurm
+        group: slurm
+        mode: '0600'
+
+    - name: Start and enable slurmdbd
+      systemd:
+        name: slurmdbd
+        state: started
+        enabled: yes
+
+    - name: Wait for slurmdbd to be ready
+      wait_for:
+        timeout: 10
+      changed_when: false
+
+    - name: Add cluster to accounting database
+      shell: |
+        sacctmgr -i add cluster caelum || true
+      changed_when: false
+
+    - name: Add account to accounting database
+      shell: |
+        sacctmgr -i add account name=ocaml cluster=caelum || true
+      changed_when: false
+
+    - name: Add user to accounting database
+      shell: |
+        sacctmgr -i create user name=mte24 cluster=caelum account=ocaml || true
+      changed_when: false
+
+    - name: Check if munge key exists
+      stat:
+        path: /etc/munge/munge.key
+      register: munge_key_stat
+
+    - name: Generate munge key if it doesn't exist
+      command: /usr/sbin/create-munge-key
+      when: not munge_key_stat.stat.exists
+
+    - name: Set munge key permissions
+      file:
+        path: /etc/munge/munge.key
+        owner: munge
+        group: munge
+        mode: '0400'
+
+    - name: Start and enable munge service
+      systemd:
+        name: munge
+        state: started
+        enabled: yes
+
+    - name: Fetch munge key from head node
+      fetch:
+        src: /etc/munge/munge.key
+        dest: /tmp/munge.key
+        flat: yes
+
+- name: Configure Worker Nodes
+  hosts: workers
+  become: yes
+  tasks:
+    - name: Install slurmd and NFS client
+      apt:
+        name:
+          - slurmd
+          - nfs-common
+        state: present
+
+    - name: Mount /home from NFS server
+      mount:
+        path: /home
+        src: "{{ groups['head'][0] }}:/home"
+        fstype: nfs
+        opts: rw,async
+        state: mounted
+
+    - name: Copy munge key to worker nodes
+      copy:
+        src: /tmp/munge.key
+        dest: /etc/munge/munge.key
+        owner: munge
+        group: munge
+        mode: '0400'
+
+    - name: Start and enable munge service on workers
+      systemd:
+        name: munge
+        state: restarted
+        enabled: yes
+
+- name: Gather Worker Node Information
+  hosts: workers
+  become: yes
+  tasks:
+    - name: Get slurmd configuration
+      shell: slurmd -C | head -n1
+      register: slurmd_config
+      changed_when: false
+
+    - name: Get architecture
+      command: uname -m
+      register: node_arch
+      changed_when: false
+
+    - name: Set node facts
+      set_fact:
+        node_config: "{{ slurmd_config.stdout.strip() | regex_replace('^NodeName=[^ ]+', 'NodeName=' + inventory_hostname) }}"
+        node_arch: "{{ node_arch.stdout.strip() }}"
+
+- name: Generate Slurm Configuration
+  hosts: head
+  become: yes
+  tasks:
+    - name: Create slurm configuration file
+      template:
+        src: slurm.conf.j2
+        dest: /etc/slurm/slurm.conf
+        owner: slurm
+        group: slurm
+        mode: '0644'
+
+    - name: Fetch slurm configuration from head node
+      fetch:
+        src: /etc/slurm/slurm.conf
+        dest: /tmp/slurm.conf
+        flat: yes
+
+    - name: Start and enable slurmctld
+      systemd:
+        name: slurmctld
+        state: restarted
+        enabled: yes
+
+- name: Deploy Configuration to Workers and Start Services
+  hosts: workers
+  become: yes
+  tasks:
+    - name: Copy slurm configuration to workers
+      copy:
+        src: /tmp/slurm.conf
+        dest: /etc/slurm/slurm.conf
+        owner: slurm
+        group: slurm
+        mode: '0644'
+
+    - name: Start and enable slurmd service
+      systemd:
+        name: slurmd
+        state: restarted
+        enabled: yes

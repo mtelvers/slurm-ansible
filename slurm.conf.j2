@@ -1,0 +1,54 @@
+# slurm.conf - Slurm configuration file
+#
+# See the slurm.conf man page for more information.
+#
+ClusterName=caelum
+SlurmctldHost={{ groups['head'][0] }}
+
+# MANAGEMENT POLICIES
+SlurmUser=slurm
+SlurmctldPort=6817
+SlurmdPort=6818
+AuthType=auth/munge
+StateSaveLocation=/var/spool/slurmctld
+SlurmdSpoolDir=/var/spool/slurmd
+SwitchType=switch/none
+MpiDefault=none
+SlurmctldPidFile=/var/run/slurmctld.pid
+SlurmdPidFile=/var/run/slurmd.pid
+ProctrackType=proctrack/linuxproc
+ReturnToService=2
+
+# TIMERS
+SlurmctldTimeout=300
+SlurmdTimeout=300
+InactiveLimit=0
+MinJobAge=300
+KillWait=30
+Waittime=0
+
+# SCHEDULING
+SchedulerType=sched/backfill
+SelectType=select/cons_tres
+SelectTypeParameters=CR_Core
+
+# LOGGING
+SlurmctldDebug=info
+SlurmctldLogFile=/var/log/slurm/slurmctld.log
+SlurmdDebug=info
+SlurmdLogFile=/var/log/slurm/slurmd.log
+
+# ACCOUNTING
+AccountingStorageType=accounting_storage/slurmdbd
+AccountingStorageHost={{ groups['head'][0] }}
+AccountingStoragePort=6819
+JobAcctGatherType=jobacct_gather/linux
+JobAcctGatherFrequency=30
+
+# COMPUTE NODES
+{% for host in groups['workers'] %}
+{{ hostvars[host]['node_config'] }} Features={{ hostvars[host]['node_arch'] }}
+{% endfor %}
+
+# PARTITIONS
+PartitionName=compute Nodes={{ groups['workers'] | join(',') }} Default=YES MaxTime=INFINITE State=UP

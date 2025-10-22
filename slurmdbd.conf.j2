@@ -1,0 +1,22 @@
+# slurmdbd.conf - Slurm Database Daemon configuration file
+#
+# This file should be only on the computer where SlurmDBD executes and
+# should only be readable by the user which executes SlurmDBD (e.g. "slurm").
+
+AuthType=auth/munge
+
+DbdHost={{ groups['head'][0] }}
+DbdPort=6819
+
+DebugLevel=info
+
+StorageType=accounting_storage/mysql
+StorageHost=localhost
+StoragePort=3306
+StorageLoc=slurm_acct_db
+StorageUser=slurm
+StoragePass=slurmdbpass
+
+LogFile=/var/log/slurm/slurmdbd.log
+PidFile=/run/slurmdbd.pid
+SlurmUser=slurm
