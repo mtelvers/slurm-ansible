@@ -16,7 +16,8 @@ SwitchType=switch/none
 MpiDefault=none
 SlurmctldPidFile=/var/run/slurmctld.pid
 SlurmdPidFile=/var/run/slurmd.pid
-ProctrackType=proctrack/linuxproc
+ProctrackType=proctrack/cgroup
+TaskPlugin=task/cgroup,task/affinity
 ReturnToService=2
 
 # TIMERS
@@ -30,7 +31,7 @@ Waittime=0
 # SCHEDULING
 SchedulerType=sched/backfill
 SelectType=select/cons_tres
-SelectTypeParameters=CR_Core
+SelectTypeParameters=CR_Core_Memory
 
 # LOGGING
 SlurmctldDebug=info
@@ -42,8 +43,13 @@ SlurmdLogFile=/var/log/slurm/slurmd.log
 AccountingStorageType=accounting_storage/slurmdbd
 AccountingStorageHost={{ groups['head'][0] }}
 AccountingStoragePort=6819
-JobAcctGatherType=jobacct_gather/linux
+JobAcctGatherType=jobacct_gather/cgroup
 JobAcctGatherFrequency=30
+
+# RESOURCE LIMITS
+# Default memory per node if --mem is not specified (users can request more)
+# Nodes have 251-511 GB real memory; 16 GB default prevents accidental overconsumption
+DefMemPerNode=16384
 
 # COMPUTE NODES
 {% for host in groups['workers'] %}

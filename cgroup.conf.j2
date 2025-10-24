@@ -1,0 +1,18 @@
+# cgroup.conf - Slurm cgroup configuration file
+#
+# See the cgroup.conf man page for more information.
+
+# Constrain which resources jobs can use
+ConstrainCores=yes
+ConstrainDevices=yes
+ConstrainRAMSpace=yes
+ConstrainSwapSpace=yes
+
+# Memory enforcement settings
+# AllowedRAMSpace: percentage of allocated memory jobs can use (default 100)
+# Setting to 100 means jobs get exactly what they requested
+AllowedRAMSpace=100
+
+# AllowedSwapSpace: percentage of allocated memory that can be swapped (default 0)
+# Setting to 0 prevents swapping for better performance
+AllowedSwapSpace=0

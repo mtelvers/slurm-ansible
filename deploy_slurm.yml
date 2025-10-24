@@ -185,19 +185,25 @@
   hosts: head
   become: yes
   tasks:
-    - name: Create slurm configuration file
+    - name: Create slurm configuration files
       template:
-        src: slurm.conf.j2
-        dest: /etc/slurm/slurm.conf
+        src: "{{ item }}.j2"
+        dest: "/etc/slurm/{{ item }}"
         owner: slurm
         group: slurm
         mode: '0644'
+      loop:
+        - slurm.conf
+        - cgroup.conf
 
-    - name: Fetch slurm configuration from head node
+    - name: Fetch slurm configurations from head node
       fetch:
-        src: /etc/slurm/slurm.conf
-        dest: /tmp/slurm.conf
+        src: "/etc/slurm/{{ item }}"
+        dest: "/tmp/{{ item }}"
         flat: yes
+      loop:
+        - slurm.conf
+        - cgroup.conf
 
     - name: Start and enable slurmctld
       systemd:
@@ -209,13 +215,16 @@
   hosts: workers
   become: yes
   tasks:
-    - name: Copy slurm configuration to workers
+    - name: Copy slurm configurations to workers
       copy:
-        src: /tmp/slurm.conf
-        dest: /etc/slurm/slurm.conf
+        src: "/tmp/{{ item }}"
+        dest: "/etc/slurm/{{ item }}"
         owner: slurm
         group: slurm
         mode: '0644'
+      loop:
+        - slurm.conf
+        - cgroup.conf
 
     - name: Start and enable slurmd service
       systemd:
