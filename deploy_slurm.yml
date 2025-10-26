@@ -18,11 +18,12 @@
   hosts: head
   become: yes
   tasks:
-    - name: Install slurmctld, slurmdbd, NFS server, and database
+    - name: Install slurmctld, slurmdbd, slurmrestd, NFS server, and database
       apt:
         name:
           - slurmctld
           - slurmdbd
+          - slurmrestd
           - nfs-kernel-server
           - mariadb-server
           - python3-pymysql
@@ -123,6 +124,22 @@
         state: started
         enabled: yes
 
+    - name: Check if JWT key exists
+      stat:
+        path: /var/spool/slurmctld/jwt_hs256.key
+      register: jwt_key_stat
+
+    - name: Generate JWT key if it doesn't exist
+      shell: dd if=/dev/urandom bs=32 count=1 > /var/spool/slurmctld/jwt_hs256.key
+      when: not jwt_key_stat.stat.exists
+
+    - name: Set JWT key permissions
+      file:
+        path: /var/spool/slurmctld/jwt_hs256.key
+        owner: slurm
+        group: slurm
+        mode: '0600'
+
     - name: Fetch munge key from head node
       fetch:
         src: /etc/munge/munge.key
@@ -208,6 +225,34 @@
     - name: Start and enable slurmctld
       systemd:
         name: slurmctld
+        state: restarted
+        enabled: yes
+
+    - name: Create slurmrestd systemd override directory
+      file:
+        path: /etc/systemd/system/slurmrestd.service.d
+        state: directory
+        mode: '0755'
+
+    - name: Create slurmrestd systemd override to run as slurm user
+      copy:
+        dest: /etc/systemd/system/slurmrestd.service.d/override.conf
+        content: |
+          [Service]
+          User=slurm
+          Group=slurm
+          RuntimeDirectory=slurmrestd
+          ExecStart=
+          ExecStart=/usr/sbin/slurmrestd $SLURMRESTD_OPTIONS unix:/run/slurmrestd/slurmrestd.socket 0.0.0.0:6820
+        mode: '0644'
+
+    - name: Reload systemd daemon
+      systemd:
+        daemon_reload: yes
+
+    - name: Start and enable slurmrestd
+      systemd:
+        name: slurmrestd
         state: restarted
         enabled: yes
 

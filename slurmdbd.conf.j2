@@ -4,6 +4,8 @@
 # should only be readable by the user which executes SlurmDBD (e.g. "slurm").
 
 AuthType=auth/munge
+AuthAltTypes=auth/jwt
+AuthAltParameters=jwt_key=/var/spool/slurmctld/jwt_hs256.key
 
 DbdHost={{ groups['head'][0] }}
 DbdPort=6819
