@@ -242,6 +242,8 @@
           User=slurm
           Group=slurm
           RuntimeDirectory=slurmrestd
+          # Increase file descriptor limit for handling many concurrent API connections
+          LimitNOFILE=65536
           ExecStart=
           ExecStart=/usr/sbin/slurmrestd $SLURMRESTD_OPTIONS unix:/run/slurmrestd/slurmrestd.socket 0.0.0.0:6820
         mode: '0644'
